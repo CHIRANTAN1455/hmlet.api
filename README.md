@@ -5,27 +5,6 @@ Django 5 + Django REST Framework, PostgreSQL and JWT authentication.
 
 ---
 
-## Implementation status
-
-This repository is being built in small, sequential commits. Current state:
-
-| Area | Status |
-| --- | --- |
-| Project scaffold, split settings, env-driven config | ✅ Done |
-| Shared infrastructure (pagination, error envelope) | ✅ Done |
-| Docker Compose Postgres, OpenAPI/Swagger wiring | ✅ Done |
-| Auth — register / login / refresh / me | 🔜 In progress |
-| Properties | 🔜 |
-| Units | 🔜 |
-| Members | 🔜 |
-| Contracts — value calculation, overlap prevention | 🔜 |
-| Seed data + captured sample responses | 🔜 |
-
-Sections below marked *(pending)* describe the target behaviour and are not yet
-callable. Everything not so marked runs today.
-
----
-
 ## Tech stack
 
 | Concern | Choice |
