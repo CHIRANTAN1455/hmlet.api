@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Property, Unit, UnitStatus
+from .models import Property, Unit
 
 
 class UnitSerializer(serializers.ModelSerializer):

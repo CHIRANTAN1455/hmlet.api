@@ -109,6 +109,6 @@ def _summarise(detail):
     if isinstance(detail, dict):
         first_key = next(iter(detail), None)
         return _summarise(detail[first_key]) if first_key else "Request failed."
-    if isinstance(detail, (list, tuple)):
+    if isinstance(detail, list | tuple):
         return _summarise(detail[0]) if detail else "Request failed."
     return str(detail)

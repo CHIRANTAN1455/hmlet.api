@@ -6,7 +6,7 @@ from apps.properties.models import Unit
 from apps.properties.serializers import UnitSummarySerializer
 
 from .models import Contract
-from .services import calculate_total_value, contract_duration, find_overlapping_contracts
+from .services import contract_duration, find_overlapping_contracts
 
 
 class ContractSerializer(serializers.ModelSerializer):
