@@ -111,7 +111,7 @@ With the server running:
 
 ---
 
-## Endpoints *(pending — see status table)*
+## Endpoints
 
 Every endpoint except register, login and the docs requires
 `Authorization: Bearer <access_token>`.
@@ -222,7 +222,7 @@ One honest caveat: a contract that ended yesterday should free its unit today,
 but no request wrote to the database overnight. A management command handles it:
 
 ```bash
-python manage.py sync_unit_statuses    # (pending)
+python manage.py sync_unit_statuses
 ```
 
 In production this would run on a schedule (cron / Celery beat). Flagging it
