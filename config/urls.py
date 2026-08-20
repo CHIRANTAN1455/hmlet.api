@@ -14,6 +14,7 @@ from drf_spectacular.views import (
 
 api_patterns = [
     path("auth/", include("apps.accounts.urls")),
+    path("", include("apps.properties.urls")),
     # Further domain routes are added here as each app lands.
 ]
 
