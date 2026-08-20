@@ -39,6 +39,7 @@ THIRD_PARTY_APPS = [
 # service is readable at a glance.
 LOCAL_APPS = [
     "apps.common",
+    "apps.accounts",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -85,6 +86,9 @@ DATABASES["default"].setdefault("ATOMIC_REQUESTS", False)
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DATABASE_CONN_MAX_AGE", default=60)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Staff users authenticate by email rather than username; see apps/accounts.
+AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
