@@ -10,7 +10,7 @@ from pathlib import Path
 
 import environ
 
-# api.hmelt/config/settings/base.py -> api.hmelt/
+# api.hmlet/config/settings/base.py -> api.hmlet/
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
