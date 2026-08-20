@@ -1,0 +1,32 @@
+# PostgreSQL for local development.
+#
+#   docker compose up -d
+#
+# Brings up a database matching the DATABASE_URL in .env.example, with the
+# btree_gist extension pre-created (required by the contract overlap exclusion
+# constraint -- see README > Double-booking prevention).
+#
+# Only the database runs here; the Django app runs on the host via
+# `python manage.py runserver`, which keeps the edit/reload loop fast.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pms_postgres
+    environment:
+      POSTGRES_USER: pms
+      POSTGRES_PASSWORD: pms
+      POSTGRES_DB: property_management
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init_extensions.sql:/docker-entrypoint-initdb.d/00_extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pms -d property_management"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
