@@ -16,6 +16,7 @@ api_patterns = [
     path("auth/", include("apps.accounts.urls")),
     path("", include("apps.properties.urls")),
     path("", include("apps.members.urls")),
+    path("", include("apps.contracts.urls")),
     # Further domain routes are added here as each app lands.
 ]
 
