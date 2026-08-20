@@ -83,15 +83,25 @@ python manage.py runserver
 
 The API is now on **http://localhost:8000**.
 
-### 7. Load demo data *(pending)*
+### 7. Load demo data
 
 ```bash
 python manage.py seed_demo
 ```
 
-Creates a staff user, a few properties with units, members and contracts —
-including one deliberately expired contract — so the endpoints return something
-meaningful immediately.
+Creates 3 properties, 9 units, 5 members and 7 contracts, plus a staff login:
+
+```
+demo@hmlet.com / DemoPass123!
+```
+
+The contracts are a deliberate spread — currently active, expired, upcoming,
+one pair running back-to-back, and one with a part-month tail — so every query
+in the brief returns something meaningful, including `?active=true`.
+
+Dates are relative to today rather than hard-coded, so the data still
+demonstrates active-vs-expired whenever you run it. Re-running is safe; add
+`--reset` to start clean.
 
 ---
 
@@ -105,9 +115,17 @@ With the server running:
 | http://localhost:8000/api/redoc/ | ReDoc — cleaner read-only reference |
 | http://localhost:8000/api/schema/ | Raw OpenAPI 3 schema (YAML) |
 
-**To call protected endpoints from Swagger UI:** `POST /api/auth/register` (or
-`/api/auth/login`), copy the `access` token from the response, click
-**Authorize** at the top right, and enter `Bearer <token>`.
+**To call protected endpoints from Swagger UI:**
+
+1. Run `POST /api/auth/login` with `{"email": "demo@hmlet.com", "password": "DemoPass123!"}`
+2. Copy the `access` value from the response
+3. Click **Authorize** (top right) and enter `Bearer <access_token>`
+
+The token then applies to every request you make from the page.
+
+**Postman:** import `http://localhost:8000/api/schema/` — Postman reads the
+OpenAPI schema and generates a collection covering every endpoint. Set an
+`Authorization` header of `Bearer <access_token>` at the collection level.
 
 ---
 
@@ -154,8 +172,11 @@ Every endpoint except register, login and the docs requires
 | `POST` | `/api/contracts` | Create a contract |
 | `GET` | `/api/contracts` | List contracts — `?unit={id}`, `?member={id}` |
 | `GET` | `/api/contracts?active=true` | Only contracts covering today |
+| `GET` | `/api/contracts/{contract_id}` | One contract |
 
-Full request/response samples land in [`docs/API.md`](docs/API.md) *(pending)*.
+Full request and response samples for every endpoint — including the failure
+cases — are in [`docs/API.md`](docs/API.md). Each one was captured from a live
+server rather than written by hand.
 
 ---
 
@@ -313,6 +334,44 @@ one code path rather than three:
 
 **Query efficiency.** List endpoints use `select_related` / `prefetch_related` so
 the query count stays flat as the result set grows.
+
+---
+
+## Management commands
+
+| Command | Purpose |
+| --- | --- |
+| `python manage.py seed_demo [--reset]` | Populate demo properties, units, members and contracts |
+| `python manage.py sync_unit_statuses [--date YYYY-MM-DD]` | Recalculate unit availability from contract dates |
+| `python manage.py createsuperuser` | Admin access at `/admin/` |
+
+`sync_unit_statuses --date` evaluates as at an arbitrary date, which makes the
+calendar-rollover behaviour easy to demonstrate without waiting for time to
+pass:
+
+```bash
+python manage.py sync_unit_statuses --date 2030-01-01
+```
+
+---
+
+## What has been verified
+
+Behaviour claimed in this README was checked against a running server, not
+assumed:
+
+- **Contract value** — 8 cases including leap-year February and a pro-rata tail
+  whose denominator changes with the month
+- **Overlap rejection** — exact, partial and fully-contained overlaps rejected;
+  adjacent ranges (starting the day after another ends) correctly allowed
+- **Concurrency** — 6 simultaneous identical contract requests for the same unit
+  produced exactly one `201` and five `409`s, with one row committed
+- **Database guarantee** — a direct ORM insert bypassing all application
+  validation was rejected by the PostgreSQL exclusion constraint
+- **Unit status** — flips to `occupied` on contract creation and back to
+  `available` once no contract covers the evaluation date
+- **Query counts** — 23 units serialise in 1 query; properties with annotated
+  unit counts in 1 query
 
 ---
 
