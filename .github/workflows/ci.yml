@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # A newer push to the same branch makes an in-flight run irrelevant.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff==0.8.6
+
+      - name: Check style and imports
+        run: ruff check .
+
+  test:
+    name: Tests (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pms
+          POSTGRES_PASSWORD: pms
+          POSTGRES_DB: property_management
+        ports:
+          - 5432:5432
+        # Without this the job can start connecting before Postgres is ready.
+        options: >-
+          --health-cmd "pg_isready -U pms -d property_management"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DATABASE_URL: postgres://pms:pms@localhost:5432/property_management
+      DJANGO_SECRET_KEY: ci-secret-key-not-used-outside-ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check for missing migrations
+        # Catches a model changed without makemigrations, which would break a
+        # deploy rather than the test run.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run migrations
+        run: python manage.py migrate
+
+      - name: Verify the double-booking exclusion constraint exists
+        # The single most important invariant in this service. If the migration
+        # silently skipped it, every overlap test would still pass on
+        # application-level checks alone -- so assert the constraint itself.
+        run: |
+          python - <<'PY'
+          import os, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.test")
+          django.setup()
+          from django.db import connection
+          with connection.cursor() as cur:
+              cur.execute(
+                  "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                  "WHERE conname = 'no_overlapping_contracts_per_unit'"
+              )
+              row = cur.fetchone()
+          assert row, "exclusion constraint is missing"
+          assert "'[]'" in row[0], f"bounds must be inclusive, got: {row[0]}"
+          print("constraint OK:", row[0])
+          PY
+
+      - name: Run tests
+        run: pytest -v --cov=apps --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  smoke:
+    name: Smoke test (seed + live requests)
+    runs-on: ubuntu-latest
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pms
+          POSTGRES_PASSWORD: pms
+          POSTGRES_DB: property_management
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pms -d property_management"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DATABASE_URL: postgres://pms:pms@localhost:5432/property_management
+      DJANGO_SECRET_KEY: ci-secret-key-not-used-outside-ci
+      DJANGO_DEBUG: "False"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Migrate and seed
+        run: |
+          python manage.py migrate
+          python manage.py seed_demo
+
+      - name: Start the server
+        run: |
+          python manage.py runserver 8000 --noreload &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/api/schema/ >/dev/null && break
+            sleep 1
+          done
+
+      - name: Exercise the API end to end
+        # Proves the README's quick start actually works on a clean machine,
+        # which unit tests cannot demonstrate.
+        run: |
+          set -euo pipefail
+          BASE=http://127.0.0.1:8000/api
+
+          echo "Unauthenticated request must be rejected"
+          code=$(curl -s -o /dev/null -w '%{http_code}' $BASE/properties)
+          [ "$code" = "401" ] || { echo "expected 401, got $code"; exit 1; }
+
+          echo "Log in"
+          TOKEN=$(curl -sf -X POST $BASE/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"demo@hmlet.com","password":"DemoPass123!"}' \
+            | python -c 'import sys,json; print(json.load(sys.stdin)["access"])')
+
+          for path in /properties /units '/units?status=available' /members /contracts '/contracts?active=true'; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$BASE$path")
+            [ "$code" = "200" ] || { echo "GET $path returned $code"; exit 1; }
+            echo "GET $path -> 200"
+          done
+
+          echo "Docs render"
+          curl -sf -o /dev/null http://127.0.0.1:8000/api/docs/
